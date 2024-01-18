@@ -1,81 +1,75 @@
 package instructions
 
 import (
-	"os"
+	"log"
 	"rallycomp-go/util"
 	"strconv"
 	"time"
-
-	"golang.org/x/tools/go/analysis/passes/nilfunc"
 )
 
 type rawInstruction struct {
-	number int
-	carZeroBeginTime *time.Time
-	cast_mph *float32
-	cast_kph *float32
-	begin_distance_miles float32
-	begin_distance_kilometers float32
-	instructionText string
-	pauseDuration time.Duration
-	cautions int
+	number                    int
+	carZeroBeginTime          *time.Time
+	cast_mph                  *float64
+	cast_kph                  *float64
+	begin_distance_miles      float64
+	begin_distance_kilometers float64
+	instructionText           string
+	pauseDuration             time.Duration
+	cautions                  int
 }
 
 func parseCSVStringSlices(csvRaw [][]string) []rawInstruction {
 	var instructions []rawInstruction
+	today := time.Now()
+	//TODO: set the timezone from config
 	for i := 1; i < len(csvRaw); i++ {
-		// csv header is 
-		//number,car_zero_begin_time,cast_mph,cast_kph,begin_distance_miles,begin_distance_km,instruction,pause_time,caution
-		instructions = append(instructions, rawInstruction{
-			number: ,
-			carZeroBeginTime: time.Now(),
-			cast_mph: 0,
-			cast_kph: 0,
-			begin_distance_miles: 0,
-			begin_distance_kilometers: 0,
-			instructionText: csvRaw[i][0],
-			pauseDuration: time.Duration(0),
-			cautions: 0,
-		})
+		instruction := parseSingleStringSlice(csvRaw[i], today)
+		instructions = append(instructions, instruction)
 	}
 	return instructions
 }
 
-func parseSingleStringSlice(rawSlice []string) rawInstruction{
-	// csv header is 
+func parseSingleStringSlice(rawSlice []string, today time.Time) rawInstruction {
+	// csv header is
 	//number,car_zero_begin_time,cast_mph,cast_kph,begin_distance_miles,begin_distance_km,instruction,pause_time,caution
 	instructionNumber, _ := strconv.Atoi(rawSlice[0])
 
-	carZeroBeginTime = nil
+	var carZeroBeginTime *time.Time
 	if rawSlice[1] != "" {
-		carZeroBeginTime, _ := time.Parse(time.RFC3339, rawSlice[1])
+		parsedTime, err := time.Parse("15:04:05", rawSlice[1])
+		if err != nil {
+			log.Fatal(err)
+		}
+		czbt := time.Date(today.Year(), today.Month(), today.Day(), parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), 0, today.Location())
+		carZeroBeginTime = &czbt
 	}
 
 	cast_mph, cast_kph := getCastsFromRawSlice(rawSlice)
 	begin_distance_miles, begin_distance_kilometers := getDistancesFromRawSlice(rawSlice)
 
-	pauseDuration time.Duration = nil
-	if rawSlice[7]	!= "" {
-		pauseDuration, _ := time.ParseDuration(rawSlice[7])
+	var pauseSeconds float64 = 0
+	if rawSlice[7] != "" {
+		pauseSeconds, _ = strconv.ParseFloat(rawSlice[7], 64)
 	}
-	cautions = 0
+	cautions := 0
 	if rawSlice[8] != "" {
-		cautions, _ := strconv.Atoi(rawSlice[8])
+		cautions, _ = strconv.Atoi(rawSlice[8])
 	}
 	return rawInstruction{
-		number: instructionNumber,
-		carZeroBeginTime: carZeroBeginTime,
-		cast_mph: float32(cast_mph),
-		cast_kph: float32(cast_kph),
-		begin_distance_miles: float32(begin_distance_miles),
-		begin_distance_kilometers: float32(begin_distance_kilometers),
-		instructionText: rawSlice[6],
-		pauseDuration: pauseDuration,
-		cautions: cautions,
+		number:                    instructionNumber,
+		carZeroBeginTime:          carZeroBeginTime,
+		cast_mph:                  cast_mph,
+		cast_kph:                  cast_kph,
+		begin_distance_miles:      begin_distance_miles,
+		begin_distance_kilometers: begin_distance_kilometers,
+		instructionText:           rawSlice[6],
+		pauseDuration:             time.Second * time.Duration(pauseSeconds),
+		cautions:                  cautions,
 	}
 }
 
-func getCastsFromRawSlice(rawSlice []string) (*float32, *float32) {
+func getCastsFromRawSlice(rawSlice []string) (*float64, *float64) {
 	mph_string := rawSlice[2]
 	kph_string := rawSlice[3]
 
@@ -83,27 +77,28 @@ func getCastsFromRawSlice(rawSlice []string) (*float32, *float32) {
 		return nil, nil
 	}
 
-	cast_mph *float32 = 0
-	cast_kph *float32 = 0
-	if mph_string == "" {
-		cast_mph, err := strconv.ParseFloat(mph_string, 32)
-		if err != nil {	
-			//TODO: better error handling here
-			panic(err)
-		}
-		cast_kph = util.MilesToKilometers(float32(cast_mph))
-	} else {
-		cast_kph, err := strconv.ParseFloat(kph_string, 32)
+	var cast_mph float64
+	var cast_kph float64
+	var err error
+	if kph_string == "" {
+		cast_mph, err = strconv.ParseFloat(mph_string, 32)
 		if err != nil {
 			//TODO: better error handling here
 			panic(err)
 		}
-		cast_mph = util.KilometersToMiles(float32(cast_kph))
+		cast_kph = util.MilesToKilometers(cast_mph)
+	} else {
+		cast_kph, err = strconv.ParseFloat(kph_string, 32)
+		if err != nil {
+			//TODO: better error handling here
+			panic(err)
+		}
+		cast_mph = util.KilometersToMiles(cast_kph)
 	}
-	return cast_mph, cast_kph
+	return &cast_mph, &cast_kph
 }
 
-func getDistancesFromRawSlice(rawSlice []string) (float32, float32) {
+func getDistancesFromRawSlice(rawSlice []string) (float64, float64) {
 	miles_string := rawSlice[4]
 	kilometers_string := rawSlice[5]
 
@@ -111,20 +106,21 @@ func getDistancesFromRawSlice(rawSlice []string) (float32, float32) {
 		return 0, 0
 	}
 
-	begin_distance_miles float32 = 0
-	begin_distance_kilometers float32 = 0
+	var begin_distance_miles float64
+	var begin_distance_kilometers float64
+	var err error
 	if miles_string == "" {
-		begin_distance_kilometers, err := strconv.ParseFloat(kilometers_string, 32)
+		begin_distance_kilometers, err = strconv.ParseFloat(kilometers_string, 64)
 		if err != nil {
 			panic(err)
 		}
-		begin_distance_miles = util.KilometersToMiles(float32(begin_distance_kilometers))
+		begin_distance_miles = util.KilometersToMiles(begin_distance_kilometers)
 	} else {
-		begin_distance_miles, err := strconv.ParseFloat(miles_string, 32)
+		begin_distance_miles, err = strconv.ParseFloat(miles_string, 64)
 		if err != nil {
 			panic(err)
 		}
-		begin_distance_kilometers = util.MilesToKilometers(float32(begin_distance_miles))
+		begin_distance_kilometers = util.MilesToKilometers(begin_distance_miles)
 	}
 	return begin_distance_miles, begin_distance_kilometers
 }

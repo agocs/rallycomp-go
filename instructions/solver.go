@@ -1,33 +1,23 @@
 package instructions
 
 import (
+	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
-// type rawInstruction struct {
-// 	number int
-// 	carZeroBeginTime *time.Time
-// 	cast_mph *float32
-// 	cast_kph *float32
-// 	begin_distance_miles float32
-// 	begin_distance_kilometers float32
-// 	instructionText string
-// 	pauseDuration time.Duration
-// 	cautions int
-// }
-
 type instruction struct {
-	prevInstruction           *instruction
-	nextInstruction           *instruction
-	number                    int
-	carZeroBeginTime          time.Time
-	cast_kph                  float32
-	begin_distance_kilometers float32
-	instructionDuration       time.Duration
-	instructionText           string
-	pauseDuration             time.Duration
-	cautions                  int
+	prevInstruction         *instruction
+	nextInstruction         *instruction
+	number                  int
+	carZeroBeginTime        time.Time
+	castKph                 float64
+	beginDistanceKilometers float64
+	instructionDuration     time.Duration
+	instructionText         string
+	pauseDuration           time.Duration
+	cautions                int
 }
 
 func (i *instruction) setInstruction(raw rawInstruction, prev *instruction) *instruction {
@@ -40,17 +30,17 @@ func (i *instruction) setInstruction(raw rawInstruction, prev *instruction) *ins
 	i.number = raw.number
 
 	//every instruction should have a distance
-	i.begin_distance_kilometers = raw.begin_distance_kilometers
+	i.beginDistanceKilometers = raw.begin_distance_kilometers
 
 	// if the instruction doesn't have a CAST, use the previous instruction's CAST
 	if raw.cast_kph == nil {
-		i.cast_kph = prev.cast_kph
+		i.castKph = prev.castKph
 	} else {
-		i.cast_kph = *raw.cast_kph
+		i.castKph = *raw.cast_kph
 	}
 
 	// we have a CAST and a distance, so we can calculate the duration of this instruction
-	i.instructionDuration = time.Duration(i.begin_distance_kilometers/i.cast_kph*3600) * time.Second
+	i.instructionDuration = time.Duration(i.beginDistanceKilometers/i.castKph*3600) * time.Second
 
 	// if this instruction does not have a carZeroBeginTime, use the previous instruction's carZeroBeginTime plus the duration of the previous instruction
 	if raw.carZeroBeginTime == nil {
@@ -69,6 +59,18 @@ func (i *instruction) setInstruction(raw rawInstruction, prev *instruction) *ins
 	i.cautions = raw.cautions
 	return i
 
+}
+
+func (i instruction) String() string {
+	outBuilder := strings.Builder{}
+	for {
+		outBuilder.WriteString(fmt.Sprintf("%d, %v, %v, %s", i.number, i.carZeroBeginTime, i.beginDistanceKilometers, i.instructionText))
+		if i.nextInstruction == nil {
+			break
+		}
+		i = *i.nextInstruction
+	}
+	return outBuilder.String()
 }
 
 func solveRawInstructions(rawInstructions []rawInstruction) instruction {
